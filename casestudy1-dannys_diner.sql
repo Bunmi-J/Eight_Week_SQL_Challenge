@@ -49,8 +49,14 @@ GROUP BY s.customer_id, product_name
 ORDER BY s.customer_id, most_popular DESC;
 
 
-/* Que 6- Which item was purchased first by the customer after they became a member?
-
+/* Que 6- Which item was purchased first by the customer after they became a member?*/
+SELECT s.customer_id, s.order_date, m.product_name
+FROM sales s
+JOIN members mb ON s.customer_id = mb.customer_id
+JOIN menu m ON s.product_id = m.product_id
+WHERE s.order_date >= mb.join_date
+ORDER BY s.customer_id, s.order_date
+LIMIT 1;
 
 Que 10- In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?*/
 
