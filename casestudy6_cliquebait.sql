@@ -32820,3 +32820,188 @@ VALUES
   ('355a6a', '87a4ba', '11', '2', '17', '2020-03-18 22:45:12.670472'),
   ('355a6a', '87a4ba', '12', '1', '18', '2020-03-18 22:45:54.081818'),
   ('355a6a', '87a4ba', '13', '3', '19', '2020-03-18 22:45:54.984666');
+
+  SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'clique_bait'
+  AND table_type = 'BASE TABLE';
+  
+--B. Digital Analysis
+--How many users are there?
+SELECT COUNT(DISTINCT user_id)
+FROM users;
+
+-- 1. How many cookies does each user have on average?
+SELECT COUNT(DISTINCT cookie_id)/COUNT(DISTINCT user_id) AS avg_cookie
+FROM users;
+
+
+--2. What is the unique number of visits by all users per month?
+SELECT 
+    DATE_TRUNC('month', event_time) AS visit_month,
+    COUNT(DISTINCT visit_id) AS unique_visits
+FROM events
+GROUP BY visit_month
+ORDER BY visit_month;
+
+--3 What is the number of events for each event type?
+SELECT e.event_type, ei.event_name, COUNT(*) AS event_count
+FROM events e
+JOIN event_identifier ei ON e.event_type = ei.event_type
+GROUP BY e.event_type, ei.event_name
+ORDER BY event_count DESC;
+
+--4. What is the percentage of visits which have a purchase event?
+SELECT 
+    (COUNT(DISTINCT CASE WHEN event_type = 3 THEN visit_id END) * 100.0)
+	/ COUNT(DISTINCT visit_id) AS purchase_event_percentage
+FROM events;
+
+--5 What is the percentage of visits which view the checkout page but do not have a purchase event?
+
+SELECT 
+    (COUNT(DISTINCT CASE WHEN e.visit_id NOT IN 
+        (SELECT DISTINCT visit_id FROM events WHERE event_type = 3) 
+        THEN e.visit_id END) * 100.0) / COUNT(DISTINCT e.visit_id) AS checkout_no_purchase_percentage
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+WHERE ph.page_name = 'Checkout';
+
+--6 What are the top 3 pages by number of views?
+
+SELECT e.page_id, ph.page_name, COUNT(*) AS view_count
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+WHERE e.event_type = 1
+GROUP BY e.page_id, ph.page_name
+ORDER BY view_count DESC
+LIMIT 3;
+
+--7. What is the number of views and cart adds for each product category?
+SELECT ph.product_category, 
+       COUNT(CASE WHEN e.event_type = 1 THEN e.event_type END) AS view_count,
+       COUNT(CASE WHEN e.event_type = 2 THEN e.event_type END) AS cart_add_count
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+GROUP BY ph.product_category
+ORDER BY view_count DESC;
+
+--8. What are the top 3 products by purchases?
+SELECT ph.product_id, e.page_id, COUNT(*) AS purchase_count
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+WHERE e.event_type = 3
+GROUP BY ph.product_id, e.page_id
+ORDER BY purchase_count DESC
+LIMIT 3;
+
+--C Product Funnel Analysis
+--Create table product_metrics
+/*1. Using a single SQL query - create a new output table which has the following details:
+
+How many times was each product viewed?
+How many times was each product added to cart?
+How many times was each product added to a cart but not purchased (abandoned)?
+How many times was each product purchased?*/
+
+CREATE TABLE clique_bait.product_metrics AS
+SELECT 
+    ph.product_id,
+    ph.page_name,
+    COUNT(CASE WHEN e.event_type = 1 THEN e.event_type END) AS view_count,
+    COUNT(CASE WHEN e.event_type = 2 THEN e.event_type END) AS cart_add_count,
+    COUNT(CASE WHEN e.event_type = 2 AND e.visit_id NOT IN 
+        (SELECT DISTINCT visit_id FROM events WHERE event_type = 3) 
+        THEN e.event_type END) AS abandoned_cart_count,
+    COUNT(CASE WHEN e.event_type = 3 THEN e.event_type END) AS purchase_count
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+GROUP BY ph.product_id, ph.page_name
+ORDER BY view_count DESC;
+
+--2. Create another table which further aggregates the data for the above points 
+--but this time for each product category instead of individual products.
+
+CREATE TABLE clique_bait.product_category_metrics AS
+SELECT 
+    ph.product_category,
+    COUNT(CASE WHEN e.event_type = 1 THEN e.event_type END) AS view_count,
+    COUNT(CASE WHEN e.event_type = 2 THEN e.event_type END) AS cart_add_count,
+    COUNT(CASE WHEN e.event_type = 2 AND e.visit_id NOT IN 
+        (SELECT DISTINCT visit_id FROM clique_bait.events WHERE event_type = 3) 
+        THEN e.event_type END) AS abandoned_cart_count,
+    COUNT(CASE WHEN e.event_type = 3 THEN e.event_type END) AS purchase_count
+FROM events e
+JOIN page_hierarchy ph ON e.page_id = ph.page_id
+GROUP BY ph.product_category
+ORDER BY view_count DESC;
+
+--3. Use your 2 new output tables - answer the following questions:
+--a Which product had the most views, cart adds and purchases?
+
+SELECT product_id, page_name, view_count, cart_add_count, purchase_count
+FROM product_metrics
+ORDER BY view_count DESC, cart_add_count DESC, purchase_count DESC
+LIMIT 1;
+
+--b Which product was most likely to be abandoned?
+SELECT product_id, page_name, 
+       cart_add_count, abandoned_cart_count,
+       (abandoned_cart_count * 100.0) / cart_add_count AS abandonment_rate
+FROM product_metrics
+WHERE cart_add_count > 0  -- Ensuring we only consider products that were added to cart
+ORDER BY abandonment_rate DESC
+LIMIT 1;
+
+-- c Which product had the highest view to purchase percentage?
+SELECT product_id, page_name, 
+       view_count, purchase_count,
+       (purchase_count * 100.0) / view_count AS view_to_purchase_percentage
+FROM product_metrics
+WHERE view_count > 0  -- Ensuring we only consider products that were viewed
+ORDER BY view_to_purchase_percentage DESC
+LIMIT 1;
+
+--d What is the average conversion rate from view to cart add?
+SELECT 
+    AVG((cart_add_count * 100.0) / NULLIF(view_count, 0)) AS avg_conversion_rate
+FROM product_metrics;
+
+--e What is the average conversion rate from cart add to purchase?
+SELECT 
+    AVG((purchase_count * 100.0) / NULLIF(cart_add_count, 0)) AS avg_conversion_rate
+FROM product_metrics;
+
+--C. Campaigns Analysis
+--Generate a table that has 1 single row for every unique visit_id record and has the following columns:
+user_id
+visit_id
+visit_start_time: the earliest event_time for each visit
+page_views: count of page views for each visit
+cart_adds: count of product cart add events for each visit
+purchase: 1/0 flag if a purchase event exists for each visit
+campaign_name: map the visit to a campaign if the visit_start_time falls between the start_date and end_date
+impression: count of ad impressions for each visit
+click: count of ad clicks for each visit
+--(Optional column) cart_products: a comma separated text value with products added to the cart sorted by the order they were added to the cart (hint: use the sequence_number)
+
+CREATE TABLE clique_bait.visit_summary AS
+SELECT 
+    u.user_id,
+    e.visit_id,
+    MIN(e.event_time) AS visit_start_time,
+    COUNT(CASE WHEN e.event_type = 1 THEN e.event_type END) AS page_views,
+    COUNT(CASE WHEN e.event_type = 2 THEN e.event_type END) AS cart_adds,
+    MAX(CASE WHEN e.event_type = 3 THEN 1 ELSE 0 END) AS purchase,
+    ci.campaign_name,
+    COUNT(CASE WHEN e.event_type = 4 THEN e.event_type END) AS impression,
+    COUNT(CASE WHEN e.event_type = 5 THEN e.event_type END) AS click,
+    STRING_AGG(ph.page_name, ', ' ORDER BY e.sequence_number) AS cart_products
+FROM events e
+JOIN users u ON e.cookie_id = u.cookie_id
+LEFT JOIN page_hierarchy ph ON e.page_id = ph.page_id
+LEFT JOIN campaign_identifier ci 
+    ON ph.product_id = ci.products 
+    AND e.event_time BETWEEN ci.start_date AND ci.end_date
+GROUP BY u.user_id, e.visit_id, ci.campaign_name;
+
