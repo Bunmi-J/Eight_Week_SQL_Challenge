@@ -1,4 +1,5 @@
---CHALLENGE WEEK 2
+--CHALLENGE WEEK 2-
+-- linkk- https://8weeksqlchallenge.com/case-study-2/
 
 SET search_path = pizza_runner;
 /*DROP TABLE IF EXISTS runners;
@@ -16,8 +17,8 @@ VALUES
   (4, '2021-01-15');
   
   DROP TABLE IF EXISTS customer_orders;
-
-  CREATE TABLE customer_orders (
+-- created the customer_orders as raw data from the  case study. 
+  CREATE TABLE customer_orders_raw (
   "order_id" INTEGER,
   "customer_id" INTEGER,
   "pizza_id" INTEGER,
@@ -26,7 +27,7 @@ VALUES
   "order_time" TIMESTAMP
 );
 
-INSERT INTO customer_orders
+INSERT INTO customer_orders_raw
   ("order_id", "customer_id", "pizza_id", "exclusions", "extras", "order_time")
 VALUES
   ('1', '101', '1', '', '', '2020-01-01 18:05:02'),
@@ -44,9 +45,32 @@ VALUES
   ('10', '104', '1', 'null', 'null', '2020-01-11 18:34:49'),
   ('10', '104', '1', '2, 6', '1, 4', '2020-01-11 18:34:49');
 
+  --Note-28/06 Reviewed with Najeeb- Created a clean customer_orders using the AS keyword, 
+  --  CASE -- WHEN to replace the exclusions and extras columns 
 
---The customer_orders updated-- I changed the exclusion and extras datatype From 'VARCHAR' to array 'INT[]', then inserted '{}'into the extras and exclusions columns.
+ DROP TABLE IF EXISTS customer_orders;
+  CREATE TABLE customer_orders AS
+ SELECT 
+  order_id, 
+  customer_id, 
+  pizza_id, 
+  CASE
+	  WHEN exclusions IS null OR exclusions LIKE 'null' THEN ''
+	  ELSE exclusions
+	  END AS exclusions,
+  CASE
+	  WHEN extras IS NULL or extras LIKE 'null' THEN ''
+	  ELSE extras
+	  END AS extras,
+	order_time
+FROM customer_orders_raw;
 
+--SELECT * FROM customer_orders
+
+
+--23/05 The customer_orders updated-- I changed the exclusion and extras datatype From 'VARCHAR' to array 'INT[]', then inserted '{}'into the extras and exclusions columns.
+-- Najeeb adviced to use the CASE-- WHEN option rather than changing the exclusions and 
+--extras data type. see note 1 28/06 above
  DROP TABLE IF EXISTS customer_orders;
  CREATE TABLE customer_orders (
   "order_id" INTEGER,
@@ -75,17 +99,25 @@ VALUES
   ('10', '104', '1', '{null}', '{null}', '2020-01-11 18:34:49'),
   ('10', '104', '1', '{2, 6}', '{1, 4}', '2020-01-11 18:34:49');
 
-DROP TABLE IF EXISTS runner_orders;
-CREATE TABLE runner_orders (
+
+  SELECT * from pizza_runner.customer_orders;
+
+ 
+/*--Note for runner_orders
+ CASE 
+  WHEN duration LIKE '%mins' THEN TRIM('mins' from duration)*/
+
+DROP TABLE IF EXISTS runner_orders_raw;
+CREATE TABLE runner_orders_raw (
   "order_id" INTEGER,
   "runner_id" INTEGER,
   "pickup_time" VARCHAR(19),
-  "distance" VARCHAR(7),
+  "distance" VARCHAR(7),  
   "duration" VARCHAR(10),
   "cancellation" VARCHAR(23)
 );
 
-INSERT INTO runner_orders
+INSERT INTO runner_orders_raw
   ("order_id", "runner_id", "pickup_time", "distance", "duration", "cancellation")
 VALUES
   ('1', '1', '2020-01-01 18:15:34', '20km', '32 minutes', ''),
@@ -100,20 +132,20 @@ VALUES
   ('10', '1', '2020-01-11 18:50:20', '10km', '10minutes', 'null');
 
 --UPDATED runner_orders table data type columns(pickup_time to TIMESTAMP,distance to FLOAT8
--- duration to INTERVAL). Inserted "0" on duration where 'null' and change to INTERVAL from VARCHAR,
- for distance remove the 'km' and replace 'null' with NULL, change from VARCHAR to FLOAT8, 
+-- For distance remove the 'km'. 
 
-DROP TABLE IF EXISTS runner_orders;
-CREATE TABLE runner_orders (
+DROP TABLE IF EXISTS runner_orders_rawupdated;
+CREATE TABLE runner_orders_rawupdated (
   "order_id" INTEGER,
   "runner_id" INTEGER,
   "pickup_time" TIMESTAMP,
   "distance" FLOAT8,
-  "duration" INTERVAL,
+  "duration" VARCHAR(10),
   "cancellation" VARCHAR(23)
 );
 
-INSERT INTO runner_orders
+
+INSERT INTO runner_orders_rawupdated
   ("order_id", "runner_id", "pickup_time", "distance", "duration", "cancellation")
 VALUES
   ('1', '1', '2020-01-01 18:15:34', '20', '32 minutes', ''),
@@ -121,11 +153,38 @@ VALUES
   ('3', '1', '2020-01-03 00:12:37', '13.4', '20 mins', NULL),
   ('4', '2', '2020-01-04 13:53:03', '23.4', '40', NULL),
   ('5', '3', '2020-01-08 21:10:57', '10', '15', NULL),
-  ('6', '3', NULL, NULL, '0', 'Restaurant Cancellation'),
+  ('6', '3', NULL, NULL, 'null', 'Restaurant Cancellation'),
   ('7', '2', '2020-01-08 21:30:45', '25', '25mins', 'null'),
   ('8', '2', '2020-01-10 00:15:02', '23.4', '15 minute', 'null'),
-  ('9', '2', NULL, NULL, '0', 'Customer Cancellation'),
+  ('9', '2', NULL, NULL, 'null', 'Customer Cancellation'),
   ('10', '1', '2020-01-11 18:50:20', '10', '10minutes', 'null');
+
+--SELECT * FROM pizza_runner.runner_orders_rawupdated
+
+-- 29/06 Correction and clean table
+DROP TABLE IF EXISTS runner_orders_clean;
+CREATE TABLE runner_orders_clean AS
+SELECT order_id, 
+runner_id,
+pickup_time,
+distance,
+  CASE 
+  WHEN duration LIKE '%mins' THEN TRIM('mins' FROM duration)
+  WHEN duration LIKE '%minute' THEN TRIM('minute' FROM duration)
+  WHEN duration LIKE '%minutes' THEN TRIM('minutes' FROM duration)
+  WHEN duration = 'null' THEN ''
+  ELSE duration 
+  END AS duration,
+  CASE
+    WHEN cancellation = 'null' THEN ''
+    ELSE cancellation
+    END AS cancellation
+FROM runner_orders_rawupdated;
+
+--SELECT * FROM runner_orders_clean;
+
+
+
 
 DROP TABLE IF EXISTS pizza_names;
 CREATE TABLE pizza_names (
@@ -187,8 +246,14 @@ blank spaces. The below update set the 'null', '', and IS NULL to 'N/A'
 N.B- Difficulty using one line of code */
 
 UPDATE pizza_runner.customer_orders
-SET exclusions = 'N/A'   
-WHERE exclusions IN('null', '');
+SET exclusions = '{}'   
+WHERE exclusions IS NULL OR exclusions = '{null}';
+
+UPDATE pizza_runner.customer_orders
+SET exclusions = COALESCE(exclusions, '{}');
+
+
+--WHERE exclusions IN('null', '');
 
 
 UPDATE pizza_runner.customer_orders
@@ -222,6 +287,7 @@ WHERE cancellation IS NULL;
 	
 
 SELECT * FROM pizza_runner.runner_orders;
+select extras from pizza_runner.customer_orders WHERE extras IS NULL
 SELECT * FROM pizza_runner.customer_orders;
 
 /*TRUNCATE TABLE pizza_runner.customer_orders;*/
@@ -236,80 +302,107 @@ What was the volume of orders for each day of the week?
 
 /*  PIZZA METRICS
 Que 1 - How many pizzas were ordered?*/
-SELECT COUNT(pizza_id) AS total_pizza_ordered FROM customer_orders;
+SELECT COUNT(pizza_id) AS total_pizza_ordered FROM pizza_runner.customer_orders;
 
 /* Que 2 -How many unique customer orders were made?*/
-SELECT COUNT(DISTINCT order_id) AS unique_customers FROM customer_orders;
+SELECT COUNT(DISTINCT order_id) AS unique_customers FROM pizza_runner.customer_orders;
 
 /* Que 3 -How many successful orders were delivered by each runner?*/
 SELECT COUNT(DISTINCT order_id) AS successful_delivery, runner_id 
-FROM runner_orders
-WHERE pickup_time != 'N/A'
+FROM runner_orders_clean
+WHERE pickup_time IS NOT NULL
 GROUP BY runner_id
 ORDER BY successful_delivery DESC;
 
 /* Que 4 -How many of each type of pizza was delivered?*/
-SELECT pizza_id, COUNT(*) AS pizza_type
-FROM customer_orders c
-JOIN runner_orders r
-ON c.order_id = r.order_id
-WHERE pickup_time IS NOT NULL
-GROUP BY pizza_id
-ORDER BY pizza_type DESC;
+WITH pizza_type_delivered AS(
+  SELECT pizza_id, COUNT(*) AS pizza_type
+  FROM pizza_runner.customer_orders customerorders
+  JOIN pizza_runner.runner_orders_clean runnerorders
+  ON customerorders.order_id = runnerorders.order_id
+  WHERE pickup_time IS NOT NULL
+  GROUP BY pizza_id
+  ORDER BY pizza_type DESC)
+SELECT pizza_id, pizza_type
+FROM pizza_type_delivered;
 
 /* Que 5 -How many Vegetarian and Meatlovers were ordered by each customer?*/
-SELECT COUNT(*) AS pizza_count, pizza_name
-FROM customer_orders c
-JOIN pizza_names p
-ON c.pizza_id = p.pizza_id
-GROUP BY pizza_name
-ORDER BY pizza_count DESC;
+SELECT  customer_id, COUNT(*) AS pizza_count, pizza_name
+FROM pizza_runner.customer_orders customerorders
+JOIN pizza_runner.pizza_names pizzaname
+ON customerorders.pizza_id = pizzaname.pizza_id
+GROUP BY customer_id, pizza_name
+ORDER BY customer_id;
 
 /* Que 6 -What was the maximum number of pizzas delivered in a single order?*/
-SELECT COUNT(pizza_id) AS total_pizza, c.order_id
-FROM customer_orders c
-JOIN runner_orders r
-ON c.order_id = r.order_id
-WHERE pickup_time IS NOT NULL
-GROUP BY c.order_id
-ORDER BY total_pizza DESC
-LIMIT 1;
+WITH ma_pizza_delivered AS(
+  SELECT customerorders.order_id, COUNT(pizza_id) AS total_pizza
+  FROM pizza_runner.customer_orders customerorders
+  JOIN pizza_runner.runner_orders_clean runnerorders
+  ON customerorders.order_id = runnerorders.order_id
+  WHERE pickup_time IS NOT NULL
+  GROUP BY customerorders.order_id
+  ORDER BY total_pizza DESC)
+
+SELECT MAX(total_pizza) AS maximumpizza
+FROM ma_pizza_delivered;
+
 
 
 /* Que 7 -For each customer, how many delivered pizzas had at least 1 change
 and how many had no changes?*/
 
-SELECT customer_id, COUNT(pizza_id) AS pizza_change
-FROM customer_orders c
-JOIN runner_orders r
-ON c.order_id = r.order_id
-WHERE exclusions != 'N/A' OR extras != 'N/A'
-GROUP BY customer_id
-ORDER BY pizza_change DESC;
 
-/*How many pizzas were delivered that had both exclusions and extras?*/
+-- correction after reading re. need to review filling missing values to get accurate fig.
+WITH pizza_change_delivered AS(
+SELECT customerorders.customer_id, customerorders.order_id,
+    CASE WHEN exclusions = '' AND extras = '' THEN 'no_change'
+    --ELSE 'change' END AS pizza_change
+    WHEN exclusions IS NOT NULL OR extras IS NOT NULL THEN 'change'
+    WHEN exclusions IS NOT NULL AND extras IS NOT NULL THEN 'change'
+       END AS pizza_change
+FROM pizza_runner.customer_orders customerorders
+JOIN pizza_runner.runner_orders_clean runnerorders
+ON customerorders.order_id = runnerorders.order_id
+WHERE pickup_time IS NOT NULL)
+--GROUP BY customer_id
+--ORDER BY pizza_change;
+SELECT customer_id, pizza_change, COUNT(pizza_change) AS no_delivered
+FROM pizza_change_delivered
+WHERE pizza_change = 'no_change' OR pizza_change = 'change'
+GROUP BY customer_id, pizza_change
+ORDER BY customer_id
 
-SELECT customer_id, COUNT(pizza_id) AS pizza_change
-FROM customer_orders c
-JOIN runner_orders r
-ON c.order_id = r.order_id
-WHERE exclusions IS NOT NULL OR extras IS NOT NULL
-GROUP BY customer_id
-ORDER BY pizza_change DESC;
+8. /*How many pizzas were delivered that had both exclusions and extras?*/
+
+
+--correction
+WITH pizza_change_delivered AS(
+  SELECT customerorders.customer_id, customerorders.order_id,
+  CASE WHEN exclusions != '' AND extras != '' THEN 'change'
+        END AS pizza_change
+        --END AS pizza_change
+  FROM pizza_runner.customer_orders customerorders
+  JOIN pizza_runner.runner_orders_clean runnerorders
+  ON customerorders.order_id = runnerorders.order_id
+  WHERE pickup_time IS NOT NULL)
+SELECT COUNT(pizza_change) AS changes
+FROM pizza_change_delivered
 
 /*Que 9 -What was the total volume of pizzas ordered for each hour of the day?*/
-SELECT 
+SELECT order_time,
     EXTRACT(HOUR FROM order_time) AS order_hour,
+    TO_CHAR(order_time, 'Day') AS order_day,
     COUNT(*) AS total_pizzas_ordered
-FROM customer_orders
-GROUP BY order_hour
-ORDER BY order_hour DESC;
+FROM pizza_runner.customer_orders
+GROUP BY order_time, order_hour, order_day
+ORDER BY order_time DESC;
 
 /* Que 10 -What was the volume of orders for each day of the week?*/
 SELECT 
     TO_CHAR(order_time, 'Day') AS order_day,
     COUNT(*) AS total_orders
-FROM customer_orders
+FROM pizza_runner.customer_orders
 GROUP BY order_day
 ORDER BY total_orders DESC;
 
@@ -318,10 +411,12 @@ ORDER BY total_orders DESC;
 /* Que 1 -How many runners signed up for each 1 week period? (i.e. week starts 2021-01-01)*/
 
 SELECT DATE_TRUNC('week', registration_date) AS week_start,
-COUNT(*) AS runners_signed_up
-FROM runners
+COUNT(runner_id) AS runners_signed_up
+FROM pizza_runner.runners
+WHERE registration_date >= '2021-01-01'
 GROUP BY week_start
 ORDER BY week_start;
+
 
 /* Que 2 -What was the average time in minutes it took for each runner to arrive at the 
 Pizza Runner HQ to pickup the order?*/
@@ -330,7 +425,7 @@ Pizza Runner HQ to pickup the order?*/
 SELECT runner_id,
     AVG(EXTRACT(EPOCH FROM (pickup_time - order_time)) / 60) 
     AS avg_arrival_time_minutes
-FROM runner_orders r
+FROM runner_orders_clean r
 JOIN customer_orders c ON r.order_id = c.order_id
 WHERE pickup_time IS NOT NULL
 GROUP BY runner_id
